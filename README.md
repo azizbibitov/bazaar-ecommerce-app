@@ -5,8 +5,9 @@ A full-stack e-commerce platform built with FastAPI, Kotlin Multiplatform, and S
 ## Stack
 
 - **Backend** - Python / FastAPI / PostgreSQL / Redis / Celery / Stripe
-- **Shared logic** - Kotlin Multiplatform (KMP), compiled to XCFramework for iOS
-- **Native apps** - Swift / SwiftUI: iPhone buyer app (`BazaarApp`) + macOS/iPad admin app (`BazaarAdmin`)
+- **Shared logic** - Kotlin Multiplatform (KMP), compiled to XCFramework for the buyer app only
+- **Buyer app** - Swift / SwiftUI iPhone app (`BazaarApp`), powered by KMP for all business logic
+- **Admin app** - Swift / SwiftUI macOS + iPad app (`BazaarAdmin`), standalone - talks directly to the API via URLSession, no KMP
 
 ## Repo Structure
 
@@ -26,7 +27,7 @@ bazaar/
 │   ├── tests/
 │   ├── requirements.txt
 │   └── docker-compose.yml
-├── shared/                   # Kotlin Multiplatform module
+├── shared/                   # Kotlin Multiplatform - buyer app only
 │   └── src/
 │       └── commonMain/kotlin/bazaar/
 │           ├── models/
@@ -34,8 +35,9 @@ bazaar/
 │           ├── repository/
 │           └── validation/
 └── ios/
-    ├── BazaarApp/            # iPhone buyer app
-    └── BazaarAdmin/          # macOS + iPad admin app
+    ├── BazaarApp/            # iPhone buyer app (uses KMP XCFramework)
+    └── BazaarAdmin/          # macOS + iPad admin app (pure SwiftUI, no KMP)
+        └── Network/          # URLSession-based API client
 ```
 
 ## Getting Started
@@ -64,28 +66,32 @@ venv/bin/uvicorn app.main:app --reload
 
 API docs available at `http://localhost:8000/docs`.
 
-### iOS / macOS
+### Buyer app (BazaarApp)
 
-Open `ios/Bazaar.xcworkspace` in Xcode. Targets: `BazaarApp` (iPhone) and `BazaarAdmin` (macOS/iPad).
-
-### KMP
+Build the KMP XCFramework first, then open the workspace in Xcode:
 
 ```bash
-# Build XCFramework
+# Build shared logic
 ./gradlew assembleXCFramework
 
 # Run shared tests
 ./gradlew :shared:test
 ```
 
+Open `ios/Bazaar.xcworkspace` in Xcode and select the `BazaarApp` target.
+
+### Admin app (BazaarAdmin)
+
+Open `ios/Bazaar.xcworkspace` in Xcode and select the `BazaarAdmin` target. No KMP build step required.
+
 ## Local Services
 
-| Service    | Port       | Notes                  |
-|------------|------------|------------------------|
-| FastAPI    | 8000       | `/docs` for Swagger UI |
-| PostgreSQL | 5432       |                        |
-| Redis      | 6379       | Cache + Celery broker  |
-| MinIO      | 9000 / 9001 | S3-compatible; UI at `:9001` |
+| Service     | Port        | Notes                        |
+|-------------|-------------|------------------------------|
+| FastAPI     | 8000        | `/docs` for Swagger UI       |
+| PostgreSQL  | 5432        |                              |
+| Redis       | 6379        | Cache + Celery broker        |
+| MinIO       | 9000 / 9001 | S3-compatible; UI at `:9001` |
 
 ## Environment Variables
 
