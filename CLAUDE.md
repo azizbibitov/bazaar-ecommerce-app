@@ -31,21 +31,14 @@ bazaar/
 │   ├── tests/
 │   ├── requirements.txt
 │   └── docker-compose.yml
-├── shared/                   # Kotlin Multiplatform - buyer app only
-│   └── src/
-│       └── commonMain/kotlin/bazaar/
-│           ├── models/       # @Serializable data classes
-│           ├── network/      # Ktor client, API endpoints
-│           ├── repository/   # AuthRepo, ProductRepo, CartRepo, OrderRepo
-│           └── validation/   # form validation rules (tested in commonTest)
-└── ios/
-    ├── BazaarApp/            # iPhone buyer app (uses KMP XCFramework)
-    │   ├── Features/         # Auth, Catalog, ProductDetail, Cart, Checkout, Orders
-    │   └── Core/             # DI, Router, Theme, Extensions
-    └── BazaarAdmin/          # macOS + iPad admin app (pure SwiftUI, no KMP)
-        ├── Features/         # Dashboard, Products, Categories, Orders
-        ├── Core/             # Router, Theme, Extensions
-        └── Network/          # URLSession-based API client (no KMP)
+└── shared/                   # Kotlin Multiplatform + iOS buyer app
+    ├── sharedLogic/          # KMP business logic (iOS + Android)
+    ├── sharedUI/             # Compose Multiplatform UI (Android only)
+    ├── iosApp/               # iPhone buyer app - lives inside the KMP project
+    │   └── iosApp/
+    │       ├── Features/     # Auth, Catalog, ProductDetail, Cart, Checkout, Orders
+    │       └── Core/         # DI, Navigation, Theme, Extensions
+    └── androidApp/           # Android scaffold (Phase 5)
 ```
 
 ## Commands
@@ -85,18 +78,18 @@ black app/ && isort app/ && flake8 app/
 ./gradlew ktlintFormat
 ```
 
-### iOS / macOS
+### iOS
 
 ```bash
 # Lint
 swiftlint
 ```
 
-Open `ios/Bazaar.xcworkspace` in Xcode. Both `BazaarApp` (iPhone) and `BazaarAdmin` (macOS/iPad) are targets in the same workspace.
+Open `shared/iosApp/iosApp.xcodeproj` in Xcode. The Xcode build phase automatically runs `./gradlew :sharedLogic:embedAndSignAppleFrameworkForXcode` on every build so the KMP framework is always up to date.
 
 ### iOS file workflow
 
-When building iOS features, Claude creates Swift files on disk and lists which files to add to which Xcode target. The developer adds them manually in Xcode. Claude never modifies `project.pbxproj` directly.
+When building iOS features, Claude creates Swift files on disk at `shared/iosApp/iosApp/<path>` and lists which files to add to the `iosApp` target. The developer adds them manually in Xcode. Claude never modifies `project.pbxproj` directly (except the Gradle build phase script).
 
 ## Architecture Decisions
 
@@ -104,7 +97,7 @@ When building iOS features, Claude creates Swift files on disk and lists which f
 Each feature is built backend → KMP → Swift (buyer) before the next feature starts. The only exception is the Foundation slice (steps 1-5), which sets up infrastructure with no iOS UI. Admin features are built backend → Swift (admin) - no KMP step.
 
 ### KMP scope: buyer app only
-KMP holds all domain models, network logic, repositories, and validation for the **buyer app**. The buyer app never defines its own model structs or duplicates validation rules - everything comes from KMP. The compiled XCFramework is added only to the `BazaarApp` Xcode target.
+KMP holds all domain models, network logic, repositories, and validation for the **buyer app**. The buyer app never defines its own model structs or duplicates validation rules - everything comes from KMP. The `iosApp` Xcode target inside `shared/iosApp/` links the framework via the `embedAndSignAppleFrameworkForXcode` Gradle task that runs automatically on every Xcode build.
 
 The admin app is excluded from KMP because it shares zero business logic with the buyer app. Admin features (product/category/order management) are entirely different from buyer features (browsing, cart, checkout). Adding KMP to admin would add Gradle build overhead with no logic reuse.
 
