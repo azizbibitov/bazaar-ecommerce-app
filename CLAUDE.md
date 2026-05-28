@@ -109,8 +109,31 @@ KMP `suspend` functions interop directly with Swift `async/await` - no callbacks
 - KMP `BazaarAuth` Ktor plugin attaches Bearer token to every request; auto-refreshes on 401 with a Mutex to prevent race conditions
 - `AppCoordinator` (owned by `App` struct as `@StateObject`) switches between `AuthFlow` and `MainFlow` based on token presence
 
-### Backend service layer
-All business logic lives in `services/`. Route handlers in `api/` only parse requests, call a service, and return responses - no direct DB queries in handlers.
+### Backend layered architecture (per "FastAPI: Modern Python Web Development" by Bill Lubanovic)
+
+The backend follows a strict four-component model. Layers communicate only through the APIs immediately adjacent to them - no layer skipping.
+
+```
+Web layer      app/api/          HTTP in/out only. Parses requests, calls Service layer, returns responses.
+                                 May import schemas and services. Must NOT import Data layer (models/, database.py).
+
+Service layer  app/services/     All business logic. Imports Data layer to read/write data.
+                                 Must NOT know about HTTP, request objects, or response formats.
+
+Data layer     app/models/       ORM models (SQLAlchemy), raw DB queries, external service clients (Redis, S3, Stripe).
+               app/storage/      Provides the Service layer access to data stores.
+               app/tasks/        Must NOT contain business logic.
+
+Model          app/schemas/      Pydantic v2 schemas - shared data definitions used by all layers.
+                                 Not a runtime layer; just the shape of data passed between layers.
+```
+
+**Enforcement rules:**
+- Route handlers in `api/` call exactly one service function per endpoint, then return
+- No `db.execute(...)` or SQLAlchemy queries in `api/`
+- No `Request`/`Response` FastAPI objects in `services/`
+- Services receive plain Python values or Pydantic schemas - never FastAPI dependencies
+- The Data layer (models, storage, tasks) is never imported directly by `api/`
 
 ### Navigation (iOS)
 `NavigationStack` + typed `Route` enum via `NavigationRouter`. No `NavigationLink(destination:)` - all navigation goes through the coordinator.
