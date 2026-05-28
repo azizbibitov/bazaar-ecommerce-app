@@ -164,3 +164,52 @@ backend/
 │   │   └── auth_service.py
 │   └── main.py              # updated: auth router + lifespan
 ```
+
+---
+
+## Step 04 - Complete local stack: MinIO, Celery, storage helpers, linting
+**Status: Complete**
+
+### What was built
+- `docker-compose.yml` - added MinIO (S3-compatible object storage, ports 9000/9001) and Celery worker service
+- `Dockerfile.celery` - slim Python image for running the Celery worker in Docker
+- `app/core/config.py` - added `aws_access_key_id`, `aws_secret_access_key`, `aws_s3_bucket`, `aws_s3_endpoint_url` settings
+- `app/tasks/celery_app.py` - Celery app wired to Redis broker/backend
+- `app/tasks/example.py` - placeholder `send_welcome_email` task (stub for future email feature)
+- `app/storage/s3.py` - `upload_file`, `get_presigned_url`, `delete_file` via boto3
+- `.pre-commit-config.yaml` (repo root) - black, isort, flake8 hooks scoped to `backend/`
+- `backend/setup.cfg` - flake8 and isort config (max line 100, black profile)
+- Added to `requirements.txt`: `celery`, `boto3`, `python-multipart`, `python-slugify`, `black`, `isort`, `flake8`, `pre-commit`
+- Updated `.env.example` with all AWS/MinIO and Stripe variables
+
+### How to verify
+```bash
+cd backend && docker compose up -d
+# MinIO UI: http://localhost:9001 (user: bazaar, password: bazaar123)
+# Celery worker starts automatically via docker compose
+
+# Run linters manually
+venv/bin/black app/ && venv/bin/isort app/ && venv/bin/flake8 app/
+```
+
+### Files created/updated
+```
+bazaar_proj/
+├── .pre-commit-config.yaml       # new
+└── backend/
+    ├── Dockerfile.celery          # new
+    ├── setup.cfg                  # new
+    ├── docker-compose.yml         # updated: added minio + celery services
+    ├── requirements.txt           # updated: celery, boto3, linting tools
+    ├── .env.example               # updated: AWS/MinIO + Stripe vars
+    └── app/
+        ├── core/
+        │   └── config.py          # updated: AWS settings fields
+        ├── storage/
+        │   ├── __init__.py        # new
+        │   └── s3.py              # new
+        └── tasks/
+            ├── __init__.py        # new
+            ├── celery_app.py      # new
+            └── example.py        # new
+```
