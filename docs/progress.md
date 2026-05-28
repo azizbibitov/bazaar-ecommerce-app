@@ -213,3 +213,45 @@ bazaar_proj/
             ├── celery_app.py      # new
             └── example.py        # new
 ```
+
+---
+
+## Step 05 - pytest setup + auth tests
+**Status: Complete**
+
+### What was built
+- `pytest.ini` - asyncio auto mode, session-scoped event loop for both fixtures and tests (required for Python 3.14 + asyncpg compatibility)
+- `tests/conftest.py` - test infrastructure:
+  - `NullPool` engine pointing at `bazaar_test` DB (avoids asyncpg "attached to different loop" errors)
+  - Session-scoped `_create_tables` / `_drop_tables` fixtures
+  - `_clean_tables` autouse fixture truncates all tables after each test for isolation
+  - `db` fixture provides a fresh `AsyncSession` per test
+  - `redis_client` fixture uses Redis DB 1 and flushes after each test
+  - `client` fixture injects overrides for `get_db` and `get_redis` into the FastAPI app
+- `tests/test_auth.py` - 16 tests covering service layer and Web layer:
+  - Register: creates user, duplicate raises `ConflictError`
+  - Login: returns tokens, wrong password raises `AuthError`, unknown email raises `AuthError`
+  - Refresh: rotates tokens, old token invalid after rotation, bad format raises `AuthError`
+  - Endpoints: 201 register, 409 duplicate, 200 login, 401 wrong password, 200 refresh, 204 logout, 403 no token
+
+### Notes
+- `pytest-asyncio==0.26.0` required (0.24 teardown crashes on Python 3.14)
+- `NullPool` on test engine is mandatory - asyncpg connection pool holds connections tied to a specific event loop; NullPool creates fresh connections per query
+- `asyncio_default_test_loop_scope = session` in `pytest.ini` - all tests and fixtures share one event loop, preventing "Future attached to a different loop" errors from SQLAlchemy's `asyncio.shield()` in session close
+
+### How to verify
+```bash
+cd backend && docker compose up -d
+venv/bin/pytest tests/test_auth.py -v
+# Expected: 16 passed
+```
+
+### Files created
+```
+backend/
+├── pytest.ini                 # new
+└── tests/
+    ├── __init__.py            # new
+    ├── conftest.py            # new
+    └── test_auth.py           # new
+```
