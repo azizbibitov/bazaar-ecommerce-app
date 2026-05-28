@@ -94,6 +94,10 @@ swiftlint
 
 Open `ios/Bazaar.xcworkspace` in Xcode. Both `BazaarApp` (iPhone) and `BazaarAdmin` (macOS/iPad) are targets in the same workspace.
 
+### iOS file workflow
+
+When building iOS features, Claude creates Swift files on disk and lists which files to add to which Xcode target. The developer adds them manually in Xcode. Claude never modifies `project.pbxproj` directly.
+
 ## Architecture Decisions
 
 ### Vertical slice development
