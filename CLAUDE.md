@@ -4,11 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Bazaar is a full-stack e-commerce platform with three distinct layers built in parallel, feature by feature (vertical slices - never build an entire layer in isolation):
+Bazaar is a full-stack e-commerce platform built as three independent pieces:
 
 - **Backend** - Python / FastAPI / PostgreSQL / Redis / Celery / Stripe
-- **Shared logic** - Kotlin Multiplatform (KMP), compiled to XCFramework for iOS
-- **Native apps** - Swift / SwiftUI: iPhone buyer app (`BazaarApp`) + macOS/iPad admin app (`BazaarAdmin`)
+- **Shared logic** - Kotlin Multiplatform (KMP), compiled to XCFramework for iOS buyer app only
+- **Buyer app** - Swift / SwiftUI iPhone app (`BazaarApp`), uses KMP for all business logic
+- **Admin app** - Swift / SwiftUI macOS + iPad app (`BazaarAdmin`), standalone - no KMP dependency
 
 Phase 1 covers: Foundation, Auth, Design System, Catalog, Image uploads, Admin app, Seed/FTS, Error states, Tests, and Integration.
 
@@ -30,7 +31,7 @@ bazaar/
 │   ├── tests/
 │   ├── requirements.txt
 │   └── docker-compose.yml
-├── shared/                   # Kotlin Multiplatform module
+├── shared/                   # Kotlin Multiplatform - buyer app only
 │   └── src/
 │       └── commonMain/kotlin/bazaar/
 │           ├── models/       # @Serializable data classes
@@ -38,12 +39,13 @@ bazaar/
 │           ├── repository/   # AuthRepo, ProductRepo, CartRepo, OrderRepo
 │           └── validation/   # form validation rules (tested in commonTest)
 └── ios/
-    ├── BazaarApp/            # iPhone buyer app
+    ├── BazaarApp/            # iPhone buyer app (uses KMP XCFramework)
     │   ├── Features/         # Auth, Catalog, ProductDetail, Cart, Checkout, Orders
     │   └── Core/             # DI, Router, Theme, Extensions
-    └── BazaarAdmin/          # macOS + iPad admin app
+    └── BazaarAdmin/          # macOS + iPad admin app (pure SwiftUI, no KMP)
         ├── Features/         # Dashboard, Products, Categories, Orders
-        └── Core/
+        ├── Core/             # Router, Theme, Extensions
+        └── Network/          # URLSession-based API client (no KMP)
 ```
 
 ## Commands
@@ -95,19 +97,25 @@ Open `ios/Bazaar.xcworkspace` in Xcode. Both `BazaarApp` (iPhone) and `BazaarAdm
 ## Architecture Decisions
 
 ### Vertical slice development
-Each feature is built backend → KMP → Swift before the next feature starts. The only exception is the Foundation slice (steps 1-5), which sets up infrastructure with no iOS UI.
+Each feature is built backend → KMP → Swift (buyer) before the next feature starts. The only exception is the Foundation slice (steps 1-5), which sets up infrastructure with no iOS UI. Admin features are built backend → Swift (admin) - no KMP step.
 
-### KMP as the shared truth
-KMP holds all domain models, network logic, repositories, and validation. Swift apps **never** define their own model structs or duplicate validation rules. The compiled XCFramework is added to both Xcode targets (embed & sign).
+### KMP scope: buyer app only
+KMP holds all domain models, network logic, repositories, and validation for the **buyer app**. The buyer app never defines its own model structs or duplicates validation rules - everything comes from KMP. The compiled XCFramework is added only to the `BazaarApp` Xcode target.
 
-### KMP suspend functions call from Swift
+The admin app is excluded from KMP because it shares zero business logic with the buyer app. Admin features (product/category/order management) are entirely different from buyer features (browsing, cart, checkout). Adding KMP to admin would add Gradle build overhead with no logic reuse.
+
+### Admin app: pure SwiftUI + URLSession
+`BazaarAdmin` is a standalone SwiftUI app. It talks to the FastAPI backend directly via `URLSession` + `Codable` Swift structs. No KMP, no Ktor, no shared XCFramework. Admin model structs are defined locally in Swift and may overlap in shape with KMP models but are independent.
+
+### KMP suspend functions call from Swift (buyer app only)
 KMP `suspend` functions interop directly with Swift `async/await` - no callbacks needed. Use `Task {}` to bridge sync button taps to async KMP calls.
 
 ### Auth flow
 - JWT: 15-min access token + 7-day refresh token stored in Redis (key `refresh:{user_id}`)
-- iOS stores tokens in Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
+- Buyer app stores tokens in Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` via KMP
 - KMP `BazaarAuth` Ktor plugin attaches Bearer token to every request; auto-refreshes on 401 with a Mutex to prevent race conditions
-- `AppCoordinator` (owned by `App` struct as `@StateObject`) switches between `AuthFlow` and `MainFlow` based on token presence
+- Admin app stores tokens in Keychain directly in Swift; handles 401 refresh manually via URLSession interceptor
+- `AppCoordinator` (owned by `App` struct as `@StateObject`) switches between `AuthFlow` and `MainFlow` based on token presence - applies to both apps independently
 
 ### Backend layered architecture (per "FastAPI: Modern Python Web Development" by Bill Lubanovic)
 
@@ -136,12 +144,13 @@ Model          app/schemas/      Pydantic v2 schemas - shared data definitions u
 - The Data layer (models, storage, tasks) is never imported directly by `api/`
 
 ### Navigation (iOS)
-`NavigationStack` + typed `Route` enum via `NavigationRouter`. No `NavigationLink(destination:)` - all navigation goes through the coordinator.
+`NavigationStack` + typed `Route` enum via `NavigationRouter`. No `NavigationLink(destination:)` - all navigation goes through the coordinator. Applies to both `BazaarApp` and `BazaarAdmin`.
 
 ### Design system (iOS)
 - Colors defined in xcassets with light/dark variants, accessed via `Color` extensions
 - `TextStyle` ViewModifier presets (`.title`, `.headline`, `.body`, `.caption`)
 - `Spacing` enum constants (`xs:4`, `sm:8`, `md:16`, `lg:24`, `xl:32`) - never hardcode padding values
+- Both apps share the same design system conventions; `BazaarAdmin` defines its own xcassets independently (no shared asset catalog)
 
 ## Local Services
 
@@ -172,4 +181,5 @@ Copy `.env.example` to `.env`. Key variables: `DATABASE_URL`, `REDIS_URL`, `SECR
 
 - **Backend**: pytest, FastAPI `TestClient`, separate test DB rolled back after each test. Target: 80% coverage on services layer.
 - **KMP**: `commonTest` for all validation and repository logic; `MockEngine` for Ktor to mock API responses.
-- **iOS**: `XCTest` for ViewModels; `XCUITest` for critical flows (login, add to cart, checkout).
+- **Buyer app**: `XCTest` for ViewModels; `XCUITest` for critical flows (login, add to cart, checkout).
+- **Admin app**: `XCTest` for ViewModels only; no UI automation tests (internal tool, lower risk).
