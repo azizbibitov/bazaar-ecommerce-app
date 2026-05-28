@@ -13,6 +13,7 @@ class UserResponse(BaseModel):
     id: uuid.UUID
     email: str
     full_name: str
+    role: str
 
 
 class LoginRequest(BaseModel):
