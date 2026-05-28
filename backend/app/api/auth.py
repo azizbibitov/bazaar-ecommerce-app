@@ -53,3 +53,11 @@ async def logout(
     redis: Redis = Depends(get_redis),
 ) -> None:
     await auth_service.logout(redis, user_id)
+
+
+@router.get("/me", response_model=UserResponse)
+async def me(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> UserResponse:
+    return await auth_service.get_me(db, user_id)

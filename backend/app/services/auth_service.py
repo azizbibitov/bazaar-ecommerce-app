@@ -1,3 +1,4 @@
+import uuid
 from datetime import timedelta
 
 from redis.asyncio import Redis
@@ -5,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import AuthError, ConflictError
+from app.core.exceptions import AuthError, ConflictError, NotFoundError
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -30,7 +31,7 @@ async def register(db: AsyncSession, req: RegisterRequest) -> UserResponse:
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    return UserResponse(id=user.id, email=user.email, full_name=user.full_name)
+    return UserResponse(id=user.id, email=user.email, full_name=user.full_name, role=user.role.value)
 
 
 async def login(db: AsyncSession, redis: Redis, req: LoginRequest) -> TokenResponse:
@@ -71,3 +72,11 @@ async def refresh(redis: Redis, refresh_token: str) -> TokenResponse:
 
 async def logout(redis: Redis, user_id: str) -> None:
     await redis.delete(f"refresh:{user_id}")
+
+
+async def get_me(db: AsyncSession, user_id: str) -> UserResponse:
+    result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise NotFoundError("User not found")
+    return UserResponse(id=user.id, email=user.email, full_name=user.full_name, role=user.role.value)
