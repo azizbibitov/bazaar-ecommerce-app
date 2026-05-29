@@ -255,3 +255,122 @@ backend/
     ├── conftest.py            # new
     └── test_auth.py           # new
 ```
+
+---
+
+## Step 06 - KMP sharedLogic auth layer + backend GET /auth/me
+**Status: Complete**
+
+### What was built
+- Removed wizard placeholder files (Greeting, Platform)
+- Added Ktor 3.1.3, kotlinx-coroutines 1.10.2, kotlinx-serialization 1.8.1 to version catalog
+- Configured `XCFramework` builder - `assembleSharedLogicXCFramework` task now available
+- `BazaarError` sealed class (Network, Auth, Conflict, NotFound, Unknown)
+- `AuthTokens` and `UserProfile` `@Serializable` models matching backend schemas
+- `TokenStorage` interface + `expect fun createTokenStorage()` factory
+- `KeychainTokenStorage` (iOS) - stores tokens in Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
+- `InMemoryTokenStorage` (Android stub for Phase 5)
+- `BazaarAuthPlugin` - Ktor `ClientPlugin` attaches Bearer token to every outgoing request
+- `createBazaarClient` - `HttpClient` factory with `ContentNegotiation` + auth plugin
+- `httpEngine()` expect/actual - Darwin on iOS, OkHttp on Android
+- `AuthRepository` interface + `AuthRepositoryImpl` with Mutex-protected refresh
+- `createAuthRepository()` public factory for Swift consumers
+- Backend: fixed `register()` to include `role` in `UserResponse`; added `GET /auth/me` endpoint
+- 6 `commonTest` MockEngine tests - all passing on JVM and iOS Simulator targets
+
+### How to verify
+```bash
+cd shared
+./gradlew :sharedLogic:allTests
+# Expected: 6 passed (JVM + iOS Simulator)
+
+./gradlew :sharedLogic:assembleSharedLogicXCFramework
+# Expected: xcframework written to sharedLogic/build/XCFrameworks/release/SharedLogic.xcframework
+```
+
+### Files created
+```
+shared/sharedLogic/src/
+├── commonMain/kotlin/com/bazaar/shared/
+│   ├── error/BazaarError.kt
+│   ├── models/AuthTokens.kt
+│   ├── models/UserProfile.kt
+│   ├── network/ApiRequests.kt
+│   ├── network/BazaarAuthPlugin.kt
+│   ├── network/BazaarHttpClient.kt
+│   ├── network/httpEngine.kt
+│   ├── repository/AuthRepository.kt
+│   ├── repository/AuthRepositoryImpl.kt
+│   └── storage/TokenStorage.kt
+├── iosMain/kotlin/com/bazaar/shared/
+│   ├── network/httpEngine.ios.kt
+│   └── storage/KeychainTokenStorage.kt
+├── androidMain/kotlin/com/bazaar/shared/
+│   ├── network/httpEngine.android.kt
+│   └── storage/InMemoryTokenStorage.kt
+└── commonTest/kotlin/com/bazaar/shared/
+    ├── repository/AuthRepositoryTest.kt
+    └── storage/InMemoryTokenStorage.kt
+```
+
+---
+
+## Step 07 - iOS buyer app auth screens
+**Status: Complete**
+
+### What was built
+- Buyer app lives at `shared/iosApp/iosApp.xcodeproj` (KMP wizard project)
+- Xcode build phase runs `./gradlew :sharedLogic:embedAndSignAppleFrameworkForXcode` on every build - KMP framework always up to date, no manual XCFramework dragging
+- Fixed build phase to export `JAVA_HOME` pointing to Android Studio's bundled JDK
+- Design system: `Spacing` enum (xs/sm/md/lg/xl), `BazaarTextStyle` ViewModifier presets
+- `BazaarPrimary` and `BazaarError` xcassets color sets with light/dark variants (Xcode auto-generates Swift symbols via `ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS`)
+- `AppContainer` - wires `KeychainTokenStorage` + `createAuthRepository()`
+- `AppCoordinator` - `@StateObject`, `isAuthenticated` gate, `signOut()`
+- `AuthRoute` - typed enum for `NavigationStack`
+- `AuthViewModel` - `login()` and `register()` async, typed `BazaarError` catch
+- `LoginView` - email/password fields, sign-in button, navigate to register
+- `RegisterView` - full name/email/password fields, create account button
+- `RootView` - `NavigationStack` switching `AuthFlow` / Main placeholder
+
+### How to verify
+Open `shared/iosApp/iosApp.xcodeproj` in Xcode, build and run on simulator. Login and Register screens should appear. Successful auth sets `isAuthenticated = true` and shows the Main placeholder.
+
+### Files created
+```
+shared/iosApp/iosApp/
+├── App/RootView.swift
+├── Assets.xcassets/Colors/
+│   ├── BazaarPrimary.colorset/Contents.json
+│   └── BazaarError.colorset/Contents.json
+├── Core/
+│   ├── Config/APIConfig.swift
+│   ├── DI/AppContainer.swift
+│   ├── Navigation/AppCoordinator.swift
+│   ├── Navigation/Route.swift
+│   └── Theme/
+│       ├── Spacing.swift
+│       └── TextStyle.swift
+└── Features/Auth/
+    ├── AuthViewModel.swift
+    ├── LoginView.swift
+    └── RegisterView.swift
+```
+
+### Notes
+- `iOSApp.swift` (wizard-generated entry point) needs updating to use `AppCoordinator` - see below
+- `ContentView.swift` (wizard-generated) can be deleted once `iOSApp.swift` is wired to `RootView`
+
+### iOSApp.swift - update to
+```swift
+@main
+struct iOSApp: App {
+    @StateObject private var coordinator = AppCoordinator(container: AppContainer())
+
+    var body: some Scene {
+        WindowGroup {
+            RootView()
+                .environmentObject(coordinator)
+        }
+    }
+}
+```
